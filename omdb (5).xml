@@ -1,0 +1,309 @@
+<?xml version="1.0" encoding="utf-8"?>
+<dleplugin>
+	<name>OMDB</name>
+	<description>OMDB API Entegrasyonu ile Film Çekme</description>
+	<icon>engine/skins/images/omdb/Omdb-logo.png</icon>
+	<version>1.0.0</version>
+	<dleversion>13</dleversion>
+	<versioncompare>greater</versioncompare>
+	<upgradeurl></upgradeurl>
+	<filedelete>0</filedelete>
+	<needplugin></needplugin>
+	<mnotice>0</mnotice>
+	<mysqlinstall><![CDATA[REPLACE INTO {prefix}_admin_sections (name, title, descr, icon, allow_groups) VALUES ('omdb', 'OMDB', 'The movie database OMDB', 'omdb.png', '1,2');
+CREATE TABLE IF NOT EXISTS `{prefix}_omdbconfig` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `value` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `t` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;]]></mysqlinstall>
+	<mysqlupgrade><![CDATA[]]></mysqlupgrade>
+	<mysqlenable><![CDATA[REPLACE INTO {prefix}_admin_sections (name, title, descr, icon, allow_groups) VALUES ('omdb', 'OMDB', 'The movie database OMDB', 'omdb.png', '1,2');
+CREATE TABLE IF NOT EXISTS `{prefix}_omdbconfig` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `value` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `t` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;]]></mysqlenable>
+	<mysqldisable><![CDATA[DELETE FROM {prefix}_admin_sections WHERE name = 'omdb';
+DROP TABLE IF EXISTS `{prefix}_omdbconfig`;]]></mysqldisable>
+	<mysqldelete><![CDATA[DELETE FROM {prefix}_admin_sections WHERE name = 'omdb';
+DROP TABLE IF EXISTS `{prefix}_omdbconfig`;]]></mysqldelete>
+	<phpinstall><![CDATA[]]></phpinstall>
+	<phpupgrade><![CDATA[]]></phpupgrade>
+	<phpenable><![CDATA[]]></phpenable>
+	<phpdisable><![CDATA[]]></phpdisable>
+	<phpdelete><![CDATA[]]></phpdelete>
+	<notice><![CDATA[]]></notice>
+	<file name="engine/inc/omdb_function.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+if (!defined("DATALIFEENGINE")) {
+    exit("Hacking attempt!");
+}
+
+class OMDBIntegration
+{
+    private $apiKey;
+    private $baseUrl = "http://www.omdbapi.com/";
+
+    public function __construct($apiKey)
+    {
+        $this->apiKey = $apiKey;
+    }
+
+    public function searchMovie($title)
+    {
+        $url = $this->baseUrl . "?apikey=" . $this->apiKey . "&s=" . urlencode($title);
+        return $this->makeRequest($url);
+    }
+
+    public function getMovieById($id)
+    {
+        $url = $this->baseUrl . "?apikey=" . $this->apiKey . "&i=" . urlencode($id);
+        return $this->makeRequest($url);
+    }
+
+    private function makeRequest($url)
+    {
+        $ch = curl_init();
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+        $response = curl_exec($ch);
+        curl_close($ch);
+        return json_decode($response, true);
+    }
+}
+
+function get_omdb_api_key() {
+    global $db;
+    $result = $db->super_query("SELECT value FROM " . PREFIX . "_omdbconfig WHERE name = 'api_key'");
+    return $result['value'];
+}
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/ajax/omdb.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+define("DATALIFEENGINE", true);
+include DLEPlugins::Check(ENGINE_DIR . "/inc/omdb_function.php");
+
+$omdb = new OMDBIntegration(get_omdb_api_key());
+$title = trim($_POST["omdb_title"]);
+if (empty($title)) {
+    echo json_encode(["Response" => "False", "Error" => "Empty title"]);
+    exit;
+}
+$info = $omdb->searchMovie($title);
+echo json_encode($info);
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/ajax/omdb_details.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+define("DATALIFEENGINE", true);
+include DLEPlugins::Check(ENGINE_DIR . "/inc/omdb_function.php");
+
+$omdb = new OMDBIntegration(get_omdb_api_key());
+$imdbID = trim($_POST["imdbid"]);
+if (empty($imdbID)) {
+    echo json_encode(["Response" => "False", "Error" => "Empty imdbID"]);
+    exit;
+}
+$info = $omdb->getMovieById($imdbID);
+echo json_encode($info);
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/inc/omdb.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+if( !defined('DATALIFEENGINE') ) {
+    die("Hacking attempt!");
+}
+
+if( $member_id['user_group'] != 1 ) {
+    msg( "error", $lang['opt_denied'], $lang['opt_denied'], '?mod=main' );
+}
+
+include_once(DLEPlugins::Check(ENGINE_DIR . '/inc/omdb_function.php'));
+
+if (isset($_POST['save'])) {
+    $api_key = $_POST['omdb_api_key'];
+    $db->query("REPLACE INTO " . PREFIX . "_omdbconfig (name, value, t) VALUES ('api_key', '{$api_key}', 'text')");
+    msg( "info", "Bilgi", "Ayarlar kaydedildi", "?mod=omdb" );
+}
+
+$api_key = get_omdb_api_key();
+
+echoheader( "<i class=\"fa fa-film position-left\"></i><span class=\"text-semibold\">OMDB API Ayarları</span>", "OMDB API Ayarları" );
+
+echo '
+<form action="" method="post">
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <b>OMDB API Ayarları</b>
+        </div>
+        <div class="panel-body">
+            <div class="form-group">
+                <label class="control-label">OMDB API Anahtarı:</label>
+                <input type="text" class="form-control width-550" name="omdb_api_key" value="' . $api_key . '">
+            </div>
+        </div>
+        <div class="panel-footer">
+            <button type="submit" name="save" class="btn bg-teal btn-sm btn-raised position-left legitRipple">
+                <i class="fa fa-floppy-o position-left"></i>Ayarları Kaydet
+            </button>
+        </div>
+    </div>
+</form>
+';
+
+echofooter();
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/inc/addnews.php">
+		<operation action="after">
+			<searchcode><![CDATA[<div class="form-group">
+							  <label class="control-label col-sm-2">{$lang['addnews_date']}</label>]]></searchcode>
+			<replacecode><![CDATA[<div class="form-group">
+<label class="control-label col-sm-2">OMDB search:</label>
+<div class="col-sm-10">
+<input type="text" class="form-control width-600 position-left" name="omdb_title" id="omdb_title" style=" margin-right: 0px; ">  
+<a href="#" class="btn bg-info-800 btn-sm" id="omdbbutton">Search OMDB</a><i class="help-button visible-lg-inline-block text-primary-600 fa fa-question-circle position-right" data-rel="popover" data-trigger="hover" data-placement="right" data-content="OMDB Title, link, search"></i>
+<div id="omdbResult" style="width:100%;background: #f4f4f4;max-width: 720px;"></div>
+</div>
+</div>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+		<operation action="after">
+			<searchcode><![CDATA[echo $categoryfilter;]]></searchcode>
+			<replacecode><![CDATA[include (DLEPlugins::Check(ENGINE_DIR . '/inc/omdb_addnews.php'));]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/inc/omdb_addnews.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+$config_path = ENGINE_DIR . '/data/omdb.config';
+
+if (!file_exists($config_path)) {
+    die('Configuration file not found.');
+}
+
+$config_data = file_get_contents($config_path);
+$configs = json_decode($config_data, true);
+
+echo '
+<style type="text/css">
+    .image-select {
+        background: #1155c9;
+    }
+    #omdbResult {
+        width: 100%;
+        background: #f4f4f4;
+        max-width: 720px;
+        max-height: 400px;
+        overflow: auto;
+    }
+    .omdb-result {
+        display: flex;
+        align-items: center;
+        margin-bottom: 10px;
+        padding: 5px;
+        border: 1px solid #ddd;
+        border-radius: 5px;
+    }
+    .omdb-result img {
+        max-width: 50px;
+        margin-right: 10px;
+    }
+</style>
+
+<script type="text/javascript">
+$(document).on("click", "#omdbbutton", function(){
+    var title = $("#omdb_title").val();
+    $.post("engine/ajax/controller.php?mod=omdb", { omdb_title: title }, function(data) {
+        if (data.Response == "True") {
+            var results = data.Search;
+            var resultHtml = "";
+            results.forEach(function(movie) {
+                resultHtml += "<a href=\'#\' class=\'omdb-result\' data-imdbid=\'" + movie.imdbID + "\' data-title=\'" + movie.Title + "\' data-year=\'" + movie.Year + "\'>" +
+                              "<img src=\'" + movie.Poster + "\'>" +
+                              "<div>" + movie.Title + " (" + movie.Year + ")</div></a>";
+            });
+            $("#omdbResult").html(resultHtml);
+        } else {
+            $("#omdbResult").html("<p>" + data.Error + "</p>");
+        }
+    }, "json").fail(function() {
+        $("#omdbResult").html("<p>Bir hata oluştu. Lütfen tekrar deneyin.</p>");
+    });
+});
+
+$(document).on("click", ".omdb-result", function(e){
+    e.preventDefault();
+    var imdbID = $(this).data("imdbid");
+    
+    $.post("engine/ajax/controller.php?mod=omdb_details", { imdbid: imdbID }, function(data) {
+        if (data.Response == "True") {
+            $("input[name=\'title\']").val(data.Title);
+            $("input[name=\'xfield[year]\']").val(data.Year);
+            $("input[name=\'xfield[rated]\']").val(data.Rated);
+            $("input[name=\'xfield[released]\']").val(data.Released);
+            $("input[name=\'xfield[runtime]\']").val(data.Runtime);
+            $("input[name=\'xfield[genre]\']").val(data.Genre);
+            $("input[name=\'xfield[director]\']").val(data.Director);
+            $("input[name=\'xfield[writer]\']").val(data.Writer);
+            $("input[name=\'xfield[actors]\']").val(data.Actors);
+            $("textarea[name=\'xfield[plot]\']").val(data.Plot); // textarea olarak düzeltildi
+            $("input[name=\'xfield[language]\']").val(data.Language);
+            $("input[name=\'xfield[country]\']").val(data.Country);
+            $("input[name=\'xfield[awards]\']").val(data.Awards);
+            $("input[name=\'xfield[poster]\']").val(data.Poster);
+            $("input[name=\'xfield[metascore]\']").val(data.Metascore);
+            $("input[name=\'xfield[imdbRating]\']").val(data.imdbRating);
+            $("input[name=\'xfield[imdbVotes]\']").val(data.imdbVotes);
+            $("input[name=\'xfield[imdbID]\']").val(data.imdbID);
+            $("input[name=\'xfield[type]\']").val(data.Type);
+            $("input[name=\'xfield[dvd]\']").val(data.DVD);
+            $("input[name=\'xfield[boxOffice]\']").val(data.BoxOffice);
+            $("input[name=\'xfield[production]\']").val(data.Production);
+            $("input[name=\'xfield[website]\']").val(data.Website);
+        } else {
+            alert("Film bilgileri getirilemedi.");
+        }
+    }, "json").fail(function() {
+        alert("Bir hata oluştu. Lütfen tekrar deneyin.");
+    });
+});
+</script>';
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+</dleplugin>
