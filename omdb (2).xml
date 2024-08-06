@@ -1,0 +1,510 @@
+<?xml version="1.0" encoding="utf-8"?>
+<dleplugin>
+	<name>OMDB</name>
+	<description>OMDB API Entegrasyonu ile Film Çekme</description>
+	<icon></icon>
+	<version>1.0.0</version>
+	<dleversion>13</dleversion>
+	<versioncompare>greater</versioncompare>
+	<upgradeurl></upgradeurl>
+	<filedelete>0</filedelete>
+	<needplugin></needplugin>
+	<mnotice>0</mnotice>
+	<mysqlinstall><![CDATA[REPLACE INTO {prefix}_admin_sections (name, title, descr, icon, allow_groups) VALUES ('omdb', 'OMDB', 'The movie database OMDB', 'omdb.png', '1,2');
+CREATE TABLE IF NOT EXISTS `{prefix}_omdbconfig` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `value` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `t` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;]]></mysqlinstall>
+	<mysqlupgrade><![CDATA[]]></mysqlupgrade>
+	<mysqlenable><![CDATA[REPLACE INTO {prefix}_admin_sections (name, title, descr, icon, allow_groups) VALUES ('omdb', 'OMDB', 'The movie database OMDB', 'omdb.png', '1,2');
+CREATE TABLE IF NOT EXISTS `{prefix}_omdbconfig` (
+  `id` int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name` varchar(100) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `value` text COLLATE utf8mb4_unicode_ci NOT NULL,
+  `t` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;]]></mysqlenable>
+	<mysqldisable><![CDATA[DELETE FROM {prefix}_admin_sections WHERE name = 'omdb';
+DROP TABLE IF EXISTS `{prefix}_omdbconfig`;]]></mysqldisable>
+	<mysqldelete><![CDATA[DELETE FROM {prefix}_admin_sections WHERE name = 'omdb';
+DROP TABLE IF EXISTS `{prefix}_omdbconfig`;]]></mysqldelete>
+	<phpinstall><![CDATA[]]></phpinstall>
+	<phpupgrade><![CDATA[]]></phpupgrade>
+	<phpenable><![CDATA[]]></phpenable>
+	<phpdisable><![CDATA[]]></phpdisable>
+	<phpdelete><![CDATA[]]></phpdelete>
+	<notice><![CDATA[]]></notice>
+	<file name="engine/inc/omdb_function.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+if (!defined("DATALIFEENGINE")) {
+    exit("Hacking attempt!");
+}
+
+class OMDBIntegration
+{
+    private $apiKey;
+    private $baseUrl = "http://www.omdbapi.com/";
+
+    public function __construct($apiKey)
+    {
+        $this->apiKey = $apiKey;
+    }
+
+    public function searchMovie($title)
+    {
+        $url = $this->baseUrl . "?apikey=" . $this->apiKey . "&s=" . urlencode($title);
+        return $url;
+    }
+
+    public function getMovieById($id)
+    {
+        $url = $this->baseUrl . "?apikey=" . $this->apiKey . "&i=" . urlencode($id);
+        return $url;
+    }
+}
+
+function get_omdb_api_key() {
+    global $db;
+    $config = $db->super_query("SELECT `value` FROM `" . PREFIX . "_omdbconfig` WHERE `name` = 'api_key'");
+    return $config['value'];
+}
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/ajax/omdb.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+define("DATALIFEENGINE", true);
+include DLEPlugins::Check(ENGINE_DIR . "/inc/omdb_function.php");
+
+$api_key = get_omdb_api_key();
+$omdb = new OMDBIntegration($api_key);
+$title = trim($_POST["omdb_title"]);
+if (empty($title)) {
+    echo json_encode(["text" => "Empty title"]);
+    exit;
+}
+$url = $omdb->searchMovie($title);
+$response = file_get_contents($url);
+$info = json_decode($response, true);
+echo json_encode($info);
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/ajax/omdb_details.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+define("DATALIFEENGINE", true);
+include DLEPlugins::Check(ENGINE_DIR . "/inc/omdb_function.php");
+
+$api_key = get_omdb_api_key();
+$omdb = new OMDBIntegration($api_key);
+$imdbID = trim($_POST["imdbid"]);
+if (empty($imdbID)) {
+    echo json_encode(["text" => "Empty imdbID"]);
+    exit;
+}
+$url = $omdb->getMovieById($imdbID);
+$response = file_get_contents($url);
+$info = json_decode($response, true);
+echo json_encode($info);
+
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/inc/addnews.php">
+		<operation action="after">
+			<searchcode><![CDATA[<div class="form-group">
+							  <label class="control-label col-sm-2">{$lang['addnews_date']}</label>]]></searchcode>
+			<replacecode><![CDATA[<div class="form-group">
+<label class="control-label col-sm-2">OMDB search:</label>
+<div class="col-sm-10">
+<input type="text" class="form-control width-600 position-left" name="omdb_title" id="omdb_title" style="margin-right: 0px;">
+<a href="#" class="btn bg-info-800 btn-sm" id="omdbbutton">Search OMDB</a>
+<i class="help-button visible-lg-inline-block text-primary-600 fa fa-question-circle position-right" data-rel="popover" data-trigger="hover" data-placement="right" data-content="OMDB Title, link, search"></i>
+<div id="omdbResult" style="width:100%;background: #f4f4f4;max-width: 720px;"></div>
+</div>
+</div>
+<script type="text/javascript">
+$(document).on("click", "#omdbbutton", function(){
+    var title = $("#omdb_title").val();
+    $("#omdbResult").empty();
+    $.ajax({
+        type: "POST",
+        url: "engine/ajax/controller.php?mod=omdb",
+        data: { omdb_title: title },
+        beforeSend: function() { ShowLoading(""); },
+        complete: function() { HideLoading(""); },
+        dataType: "json",
+        success: function(data) {
+            if (data.Response == "True") {
+                var results = data.Search;
+                var resultHtml = "";
+                results.forEach(function(movie) {
+                    resultHtml += "<div class='omdb-result' data-imdbid='" + movie.imdbID + "' data-title='" + movie.Title + "' data-year='" + movie.Year + "'>"
+                    + "<img src='" + movie.Poster + "'><div><p>" + movie.Title + " (" + movie.Year + ")</p></div></div>";
+                });
+                $("#omdbResult").html(resultHtml);
+            } else {
+                $("#omdbResult").html("<p>" + data.Error + "</p>");
+            }
+        }
+    });
+});
+
+$(document).on("click", ".omdb-result", function(e){
+    e.preventDefault();
+    var imdbID = $(this).data("imdbid");
+    $.post("engine/ajax/controller.php?mod=omdb_details", { imdbid: imdbID }, function(data) {
+        if (data.Response == "True") {
+            $("input[name='title']").val(data.Title); // Başlık kısmına gönderir
+            $("input[name='xfield[year]']").val(data.Year);
+            $("input[name='xfield[rated]']").val(data.Rated);
+            $("input[name='xfield[released]']").val(data.Released);
+            $("input[name='xfield[runtime]']").val(data.Runtime);
+            $("input[name='xfield[genre]']").val(data.Genre);
+            $("input[name='xfield[director]']").val(data.Director);
+            $("input[name='xfield[writer]']").val(data.Writer);
+            $("input[name='xfield[actors]']").val(data.Actors);
+            $("textarea[name='xfield[plot]']").val(data.Plot); // Plot'u xfield olarak ekle
+            $("input[name='xfield[language]']").val(data.Language);
+            $("input[name='xfield[country]']").val(data.Country);
+            $("input[name='xfield[awards]']").val(data.Awards);
+            $("input[name='xfield[poster]']").val(data.Poster);
+            $("input[name='xfield[metascore]']").val(data.Metascore);
+            $("input[name='xfield[imdbRating]']").val(data.imdbRating);
+            $("input[name='xfield[imdbVotes]']").val(data.imdbVotes);
+            $("input[name='xfield[imdbID]']").val(data.imdbID);
+            $("input[name='xfield[type]']").val(data.Type);
+            $("input[name='xfield[dvd]']").val(data.DVD);
+            $("input[name='xfield[boxOffice]']").val(data.BoxOffice);
+            $("input[name='xfield[production]']").val(data.Production);
+            $("input[name='xfield[website]']").val(data.Website);
+        } else {
+            alert("Film bilgileri getirilemedi.");
+        }
+    }, "json");
+});
+</script>
+<style type="text/css">
+.omdb-result {
+    display: flex;
+    margin-top: 5px;
+    padding: 5px;
+    background: #f4f4f4;
+    border: 1px solid #ddd;
+    cursor: pointer;
+}
+.omdb-result img {
+    max-width: 45px;
+    margin-right: 20px;
+}
+.omdb-result div {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+</style>]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/inc/omdb.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+if (!defined("DATALIFEENGINE") || !defined("LOGGED_IN")) {
+    die("Hacking attempt!");
+}
+
+if ($member_id['user_group'] != 1) {
+    msg("error", "Access Denied", "You do not have permission to access this section.", "?mod=main");
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $api_key = trim($_POST['api_key']);
+    $db->query("REPLACE INTO `" . PREFIX . "_omdbconfig` (`name`, `value`, `t`) VALUES ('api_key', '{$api_key}', 'OMDB API Key')");
+    msg("info", "Settings Saved", "Your settings have been saved.", "?mod=omdb");
+}
+
+$config = $db->super_query("SELECT `value` FROM `" . PREFIX . "_omdbconfig` WHERE `name` = 'api_key'");
+$api_key = $config['value'];
+
+echoheader("OMDB Settings", "Configure OMDB API Integration");
+
+echo '
+<form method="POST" action="">
+    <div class="panel panel-default">
+        <div class="panel-heading">
+            <div class="title">OMDB API Settings</div>
+        </div>
+        <div class="panel-body">
+            <div class="form-group">
+                <label for="api_key">API Key</label>
+                <input type="text" class="form-control" id="api_key" name="api_key" value="' . $api_key . '">
+            </div>
+        </div>
+        <div class="panel-footer">
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+        </div>
+    </div>
+</form>
+';
+
+echofooter();
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+	<file name="engine/inc/tmdb_addnews.php">
+		<operation action="create">
+			<replacecode><![CDATA[<?php
+
+$config_path = ENGINE_DIR . '/data/omdb.config';
+
+if (!file_exists($config_path)) {
+    die('Configuration file not found.');
+}
+
+$config_data = file_get_contents($config_path);
+$configs = json_decode($config_data, true);
+
+echo '
+<style type="text/css">
+    .image-select {
+        background: #1155c9;
+    }
+    #tmdbResult {
+        width: 100%;
+        background: #f4f4f4;
+        max-width: 720px;
+        max-height: 400px;
+        overflow: auto;
+    }
+</style>
+
+<script type="text/javascript">
+$(document).on("click", "#tmdbbutton", function(){
+    SearchVal($("#tmdbid").val(), "search");
+});
+
+$(document).on("click", ".add-game", function(){
+    $(".gameinfo").html("");
+    SearchVal($(this).attr("data-id"), "search");
+});
+
+$(document).ready(function() {
+    $("#tmdbid").keypress(function (e) {
+        var key = e.which;
+        if (key == 13) {
+            SearchVal($("#tmdbid").val(), "search");
+        }
+    }); 
+});
+
+$(document).on("click", ".tmdbmovietype", function(){
+    SearchVal($(this).attr("data-id"), "selectmovie", $(this).attr("data-type"));
+});
+
+function SearchVal(val, typle, movtype){
+    $("#tmdbResult").empty();
+    $.ajax({
+        type: "POST",
+        url: "/engine/ajax/controller.php?mod=search_tmdb",
+        data: {
+            search: val, 
+            key: "' . $configs["main"]["api"] . '", 
+            type: typle, 
+            movietype: movtype, 
+            posters: window.posters, 
+            screens: window.screenshots
+        },
+        beforeSend: ShowLoading(""),
+        dataType: "json",
+        success: function(data){
+            HideLoading("");
+            if (data.type == "selecttype") {
+                $("#tmdbResult").html("<div id=\'tmdbResult\' style=\'width:100%;background: #f4f4f4;max-width: 720px;\'><a href=\'javascript:;\' data-id=\'" + val + "\' class=\'tmdbmovietype btn bg-info-800 btn-sm\' data-type=\'movie\' style=\' display: block; margin-top: 10px; \'>Movie</a><a href=\'javascript:;\' class=\'tmdbmovietype btn bg-info-800 btn-sm\' data-type=\'tv\' data-id=\'" + val + "\' style=\' display: block; margin-top: 10px;\'>Tv</a></div>");
+            } else if (data.type == "imageselect"){
+                setposters(data);
+            } else if (data.type == "selectmovie") {
+                searchmovies(data);
+            } else if (data.type == "insert") {
+                Insert(data);
+            } else {
+                Growl.info({
+                    title: "Dikkat",
+                    text: data.text
+                });
+            }
+        }
+    });
+}
+
+function searchmovies(data){
+    let year = "";
+    jQuery.each(data.movies, function(index, itemData) {
+        if (itemData.first_air_date) {
+            year = itemData.first_air_date.split("-");
+        } else if (itemData.release_date){
+            year = itemData.release_date.split("-");
+        }
+
+        if (itemData.title) {
+            name = itemData.title;
+        } else {
+            name = itemData.name;
+        }
+
+        $("#tmdbResult").append("<a href=\'javascript:;\' data-type=\'" + itemData.media_type + "\' data-id=\'" + itemData.id + "\' class=\'movie\'> <div style=\'display: flex; max-width: 600px; width: 100%;margin-top: 5px;\'><img src=\'https://image.tmdb.org/t/p/w154/" + itemData.poster_path + "\' style=\' margin-right: 20px;max-width: 45px;\'> <div><p>" + name + "</p><p>" + year[0] + "</p><p>tv</p></div></div></a>");
+    });
+}
+
+$(document).on("click", ".movie", function(){
+    SearchVal($(this).attr("data-id"), "selectmovie", $(this).attr("data-type"));
+});
+
+function setposters(data) {
+    delete window.posters;
+    delete window.screenshots;
+    $("#tmdbResult").html("<div id=\'imageblock\' style=\' max-height: 300px; overflow: auto;margin-top: 5px;\'> </div><a href=\'#\' class=\'btn bg-info-800 btn-sm legitRipple\' id=\'inputimage\' style=\'margin-top: 10px;display: block;\'>Next</a>");
+    if (data.countposter >= 1) {
+        for (let i = 1; i < data.posters.length; i++) {
+            $("#imageblock").append("<img id=\'" + i + "\' style=\'max-width: 20%;width: 100%;cursor: pointer; padding: 5px;\' src=\'https://image.tmdb.org/t/p/w300" + data.posters[i] + "\'>");
+            $("#" + i).click(function() {
+                if ($(".image-select").length < data.countposter){
+                    $("#" + i).toggleClass("image-select");
+                } else {
+                    $("#" + i).attr("class", "");
+                }
+            });
+        }
+
+        let poster = new Array();
+        $("#inputimage").click(function(){
+            $(".image-select").each(function (index, value) {
+                poster[index] = ($(this).attr("src"));
+            });
+            window.posters = poster.join();
+            setimages(data);
+        });
+
+    } else {
+        setimages(data);
+    }
+}
+
+function setimages(data){
+    $("#tmdbResult").html("<div id=\'imageblock\' style=\' max-height: 300px; overflow: auto;margin-top: 5px;\'> </div><a href=\'#\' class=\'btn bg-info-800 btn-sm legitRipple\' id=\'inputimage\' style=\'margin-top: 10px;display: block;\'>Next</a>");
+    if (data.countscreen >= 1) {
+        for (let i = 1; i < data.images.length; i++) {
+            $("#imageblock").append("<img id=\'sc_" + i + "\' style=\'max-width: 33%;width: 100%;cursor: pointer; padding: 5px;\' src=\'https://image.tmdb.org/t/p/w300" + data.images[i] + "\'>");
+            $("#sc_" + i).click(function() {
+                if ($(".image-select").length < data.countscreen) {
+                    $(this).toggleClass("image-select");
+                } else {
+                    $(this).attr("class", "");
+                }
+            });
+        }
+
+        let screenshots = new Array();
+        $("#inputimage").click(function(){
+            $(".image-select").each(function (index, value) {
+                screenshots[index] = ($(this).attr("src"));
+            });
+            window.screenshots = screenshots.join();
+            SearchVal(data.id, "insert", data.movietype);
+        });
+
+    } else {
+        SearchVal(data.id, "insert", data.movetype);
+    }
+}
+
+function Insert(data){
+    jQuery.each(data.data, function(index, itemData) {
+        if ($("[name=\'" + index + "\']").length) {
+            $("[name=\'" + index + "\'], #" + index + "-tokenfield").val(itemData);
+        } else {
+            $("#" + index + ", #" + index + "-tokenfield").val(itemData);
+        }
+    });
+
+    if (data.posterimage == "true") {
+        let xfname = data.xfposter;
+        UploadImage(xfname, data.poster, data.xf[xfname], data.postername, data.postercode);
+        delete data.xf[xfname];
+    }
+
+    jQuery.each(data.xf, function(index, itemData) {
+        $("[name=\'xfield[" + index + "]\'], #xf_" + index + "-tokenfield").val(itemData);
+    });
+
+    $(".categoryselect :selected").removeAttr("selected");
+
+    if (data.category) {
+        $.each(data.category.split(","), function(index, value) {
+            $(".categoryselect option[value=" + value + "]").prop("selected", true);
+        });
+    }     
+
+    $(".categoryselect").trigger("chosen:updated");
+
+    if (data.images.img) {
+        jQuery.each(data.images.img, function(index, itemData) {
+            UploadImage(index, itemData, data.xf[index]);
+        });
+    }
+
+    if (data.images.gallery) {
+        jQuery.each(data.images.gallery, function(indexe, itemka) {
+            let xfvalue = data.xf[indexe].split(",");
+            jQuery.each(itemka, function(index, itemData) {
+                UploadScreens(indexe, itemData, xfvalue[index]);
+            });
+        });
+    }
+}
+
+function UploadScreens(xfname, link, original){
+    console.log(original);
+    let splitter = link.split(",");
+    let code = splitter[1];
+    let key = splitter[0];
+    link = splitter[2];
+    let name = "image";
+    $("#uploadedfile_" + xfname).append("<div id=\"xf_" + code + "\" data-id=\"" + original + "\" data-alt=\"\" class=\"uploadedfile\"><div class=\"info\">" + name + "</div><div class=\"uploadimage\"><img style=\"width:auto;height:auto;max-width:100px;max-height:90px;\" src=\"" + link + "\"></div><div class=\"info\"><a href=\"#\" onclick=\"xfaddalt(\'" + code + "\', \'" + xfname + "\');return false;\">Описание</a><br><a href=\"#\" onclick=\"xfimagegalerydelete_" + key + "(\'" + xfname + "\',\'" + original + "\', \'" + code + "\');return false;\">Удалить</a></div></div>");
+}
+
+function UploadImage(xfname, link, full){
+    let splitter = link.split(",");
+    let code = splitter[0];
+    link = splitter[1];
+    let info = "image";
+
+    $("#uploadedfile_" + xfname).html("<div id=\"xf_" + code + "\" class=\"uploadedfile\" data-id=\"" + full + "\" data-alt=\"\"><div class=\"info\">" + info + "</div><div class=\"uploadimage\"><img style=\"width:auto;height:auto;max-width:100px;max-height:90px;\" src=\"" + link + "\"></div><div class=\"info\"><a href=\"#\" onclick=\"xfaddalt(\'" + code + "\', \'" + xfname + "\');return false;\">Описание</a><br><a href=\"#\" onclick=\"xfimagedelete(\'" + xfname + "\',\'" + full + "\');return false;\">Удалить</a></div></div>");
+    $("#xfupload_" + xfname + " .qq-upload-button, #xfupload_" + xfname + " .qq-upload-button input").attr("disabled","disabled");
+    let xfield = document.getElementById("xf_" + xfname);
+    xfield.value = full;
+}
+</script>';
+?>
+]]></replacecode>
+			<enabled>1</enabled>
+		</operation>
+	</file>
+</dleplugin>
